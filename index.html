@@ -2,8 +2,13 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="description" content="Corre Entrega: jogo de entregador de moto no navegador.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Corre Entrega">
+<meta name="theme-color" content="#121419">
 </head>
 <body>
 <title>Corre Entrega 3D</title>
@@ -33,6 +38,21 @@ body {
   touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
 }
 #stage { position: fixed; inset: 0; }
+#fs {
+  position: fixed; z-index: 30; top: max(10px, env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  width: 40px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(18,20,25,.55);
+  color: var(--text); display: grid; place-items: center; cursor: pointer; touch-action: manipulation;
+}
+#fs svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+#fs .out { display: none; } #fs.on .in { display: none; } #fs.on .out { display: block; }
+#fsHelp {
+  position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(10,12,16,.82);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#fsHelp .card { width: min(100%, 420px); background: #1b1e25; border: 1px solid rgba(255,255,255,.12); border-radius: 16px; padding: 16px 18px; display: grid; gap: 10px; }
+#fsHelp h2 { margin: 0; font: 400 18px var(--font-display); }
+#fsHelp ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 15px; color: #dfe3ea; }
+#fsHelp button { justify-self: start; padding: 10px 18px; border-radius: 12px; border: 0; background: var(--bag); color: #fff; font: 400 15px var(--font-display); cursor: pointer; }
 #stage canvas { display: block; width: 100%; height: 100%; }
 button:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
 
@@ -40,7 +60,8 @@ button:focus-visible { outline: 2px solid var(--sodium); outline-offset: 2px; }
 #hud {
   position: fixed; inset: 0 0 auto 0; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none;
   padding-block: max(10px, env(safe-area-inset-top, 0px)) 0;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  /* À direita sobra espaço para o botão de tela cheia, que fica fixo no canto. */
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: calc(max(16px, env(safe-area-inset-right, 0px)) + 50px);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px rgba(0,0,0,.8);
 }
 .speed { display: flex; align-items: baseline; gap: 6px; }
@@ -174,6 +195,21 @@ body.touch .keys { display: none; }
 </style>
 
 <div id="stage"></div>
+<button id="fs" type="button" aria-label="Tela cheia" aria-pressed="false">
+  <svg class="in" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+  <svg class="out" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+</button>
+<div id="fsHelp" hidden>
+  <div class="card">
+    <h2>Tela cheia no iPhone</h2>
+    <ol>
+      <li>No Safari, toque em <strong>Compartilhar</strong> (o quadrado com a seta).</li>
+      <li>Escolha <strong>Adicionar à Tela de Início</strong>.</li>
+      <li>Abra o jogo pelo ícone novo: ele roda em tela cheia, sem as barras do Safari.</li>
+    </ol>
+    <button id="fsHelpClose" type="button">Entendi</button>
+  </div>
+</div>
 <div id="speedlines"></div>
 <div id="hud" hidden>
   <div>
@@ -2078,6 +2114,44 @@ $("finCall").addEventListener("click", () => { Sound.init(); finaleCall(); });
 $("finNext").addEventListener("click", finaleNext);
 $("pause").addEventListener("click", toMenu);
 $("sound").addEventListener("click", (e) => e.currentTarget.setAttribute("aria-pressed", String(Sound.toggle())));
+
+// Tela cheia: usa a API do navegador quando existe (Android, computador, iPad). O iPhone só permite
+// tela cheia pelo ícone na Tela de Início, então ali o botão explica o caminho.
+const fsBtn = $("fs");
+const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+const standalone = () => navigator.standalone === true || matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches;
+function syncFs() {
+  const on = !!fsElement() || standalone();
+  fsBtn.classList.toggle("on", on); fsBtn.setAttribute("aria-pressed", String(on));
+  fsBtn.setAttribute("aria-label", on ? "Sair da tela cheia" : "Tela cheia");
+  setTimeout(resize, 120);
+}
+fsBtn.addEventListener("click", async () => {
+  const root = document.documentElement;
+  try {
+    if (fsElement()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else if (root.requestFullscreen || root.webkitRequestFullscreen) {
+      await (root.requestFullscreen || root.webkitRequestFullscreen).call(root, { navigationUI: "hide" });
+      try { await screen.orientation?.lock?.("landscape"); } catch (_) {}
+    } else if (!standalone()) $("fsHelp").hidden = false;
+  } catch (_) { if (!standalone()) $("fsHelp").hidden = false; }
+  syncFs();
+});
+$("fsHelpClose").addEventListener("click", () => { $("fsHelp").hidden = true; });
+document.addEventListener("fullscreenchange", syncFs);
+document.addEventListener("webkitfullscreenchange", syncFs);
+syncFs();
+
+// Sem zoom: o Safari ignora parte das regras de viewport, então bloqueia pinça e toque duplo aqui.
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener("touchend", (e) => {
+  const now = performance.now();
+  if (now - lastTouchEnd < 350 && !e.target.closest("#menu, #fsHelp, .fin-card")) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 function resize() {
   const w = innerWidth, h = innerHeight;
