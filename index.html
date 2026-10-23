@@ -715,6 +715,8 @@ function makeBike(look) {
   }
   // Escapamento: posição da chama dos pipocos.
   const exhaustTip = new THREE.Object3D(); exhaustTip.position.set(look.model === "bros" ? -.16 : -.17, look.model === "bros" ? .41 : .12, -.24); pivot.add(exhaustTip);
+  // Ponta da rabeta: de onde saem as faíscas quando ela rala no chão.
+  const tailTip = new THREE.Object3D(); tailTip.position.set(0, .3, -.28); pivot.add(tailTip);
   // Piloto: pernas dobradas até as pedaleiras, tronco inclinado, braços no guidão, capacete e bag.
   pivot.add(rider);
   const jacket = std(look.jacket, .75), helmetMat = new THREE.MeshPhysicalMaterial({ color: look.helmet, roughness: .2, metalness: .1, clearcoat: 1, clearcoatRoughness: .08 });
@@ -746,7 +748,7 @@ function makeBike(look) {
     parts.arms.push(arm);
   }
   root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { root, pivot, front, rear, fw, rider, torso, head, bag, parts, exhaustTip, look, chest, jacket };
+  return { root, pivot, front, rear, fw, rider, torso, head, bag, parts, exhaustTip, tailTip, look, chest, jacket };
 }
 
 // ---------- Carros da Kenney ----------
@@ -1206,6 +1208,13 @@ function update(dt) {
   if (S.boosting) S.boost = Math.max(0, S.boost - dt / BOOST_TIME);
   const pct = S.v / st.top;
   S.pitch = clamp(S.pitch + (keys.wheelie && pct > .2 ? dt * 1.6 : -dt * 2.6), 0, 1);
+  // Empinando por mais de 3 s a rabeta encosta no asfalto: rala, solta faíscas e segura um pouco a moto.
+  S.wheelieT = S.pitch > .6 && S.alt <= 0 && S.v > 5 ? (S.wheelieT || 0) + dt : 0;
+  S.scrape = S.wheelieT > 3;
+  if (S.scrape) {
+    S.v -= 3 * dt;
+    if (player.tailTip) { const at = player.tailTip.getWorldPosition(new THREE.Vector3()); emitSparks(at, 3, 2.5); }
+  }
   const fr = frameAt(S.s);
   // Direção em duas etapas, como guidão de verdade:
   // 1) o comando gira o guidão aos poucos (toque curto = ajuste fino; segurar = curva toda) e volta ao centro rápido ao soltar;
@@ -1861,7 +1870,7 @@ function finaleCamera() {
 
 // ---------- Rampa a cada 4 entregas ----------
 // Atravessa a avenida inteira. Ao sair dela a moto ganha velocidade e voa alto; no ar passa por cima do trânsito.
-const RAMP_L = 14, RAMP_H = 3.2, RAMP_W = ROAD_HALF * 2, RAMP_VY = 24, AIR_G = 8.5, RAMP_KMH = 300;
+const RAMP_L = 14, RAMP_H = 3.2, RAMP_W = ROAD_HALF * 2, AIR_G = 8.5;
 let ramp = null;
 const rampTex = canvasTex(256, 256, (g, w, h) => {
   g.fillStyle = "#ffcc1a"; g.fillRect(0, 0, w, h);
@@ -1903,7 +1912,11 @@ function updateRamp(dt, prevS) {
   const d = gap(ramp.s, S.s);
   // Saiu pelo topo: decola.
   if (S.alt <= 0 && !S.crash && gap(ramp.s, prevS) <= RAMP_L && d > RAMP_L && Math.abs(S.x) < RAMP_W / 2) {
-    S.alt = RAMP_H; S.vy = RAMP_VY; S.v = Math.max(S.v, RAMP_KMH / KMH); S.airFrom = S.total; S.pitch = 0;
+    // Distância do salto proporcional à velocidade: ~100 m a 100 km/h, ~300 m a 300 km/h (entre 100 e 300).
+    // O tempo no ar sai da distância; a subida inicial vem da balística saindo de RAMP_H e caindo em zero.
+    S.v = Math.max(S.v * 1.1, 60 / KMH);
+    const dist = clamp(S.v * KMH, 100, 300), T = dist / S.v;
+    S.alt = RAMP_H; S.vy = (AIR_G * T * T / 2 - RAMP_H) / T; S.airFrom = S.total; S.pitch = 0;
     showToast("VOOU!", "boost"); Sound.pop(true); Sound.whistle();
   }
   if (d > 120 || d < -400) { ramp.active = false; ramp.g.visible = false; }
@@ -1951,7 +1964,7 @@ function placePlayer(dt) {
   bike.rotateZ(roll);
   if (c) bike.translateX(-c.dir * Math.min(c.t, 1) * .3);
   const airPitch = S.alt > 0 ? -Math.atan2(S.vy, Math.max(S.v, 10)) * .8 : onRamp > 0 ? -Math.atan2(RAMP_H, RAMP_L) : 0;
-  player.pivot.rotation.x = -S.pitch * .5 + airPitch;
+  player.pivot.rotation.x = -S.pitch * .5 + airPitch - (S.scrape ? .2 : 0);   // ralando: empina até a rabeta tocar o chão
   player.front.rotation.x = 0;
   const spin = S.v * dt / .31; player.rear.rotation.x += spin; player.fw.rotation.x += spin;
   // Agacha em alta velocidade e no boost.
@@ -2012,6 +2025,10 @@ const Sound = {
       const ts = c.createBufferSource(); ts.buffer = buf; ts.loop = true;
       this.turbo = c.createBiquadFilter(); this.turbo.type = "bandpass"; this.turbo.Q.value = 12; this.turbo.frequency.value = 2400;
       this.turboGain = c.createGain(); this.turboGain.gain.value = 0; ts.connect(this.turbo); this.turbo.connect(this.turboGain); this.turboGain.connect(this.out); ts.start();
+      // Metal raspando no asfalto: ruído agudo com chiado irregular.
+      const ss = c.createBufferSource(); ss.buffer = buf; ss.loop = true; ss.playbackRate.value = .7;
+      const sf = c.createBiquadFilter(); sf.type = "bandpass"; sf.frequency.value = 3600; sf.Q.value = 1.4;
+      this.scrapeGain = c.createGain(); this.scrapeGain.gain.value = 0; ss.connect(sf); sf.connect(this.scrapeGain); this.scrapeGain.connect(this.out); ss.start();
       this.engGain = c.createGain(); this.engGain.gain.value = 0;
       const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 30;
       const tone = c.createBiquadFilter(); tone.type = "lowpass"; tone.frequency.value = 3200;
@@ -2046,6 +2063,7 @@ const Sound = {
     this.rumble.gain.setTargetAtTime(riding ? .05 * near : 0, t, .2);
     this.turbo.frequency.setTargetAtTime(1800 + pct * 2400, t, .1);
     this.turboGain.gain.setTargetAtTime(boosting ? .5 : 0, t, .08);
+    this.scrapeGain.gain.setTargetAtTime(riding && S.scrape ? .5 + Math.random() * .3 : 0, t, .03);
   },
   burst(t, dur, freq, q, peak) {
     const c = this.ctx, src = c.createBufferSource(); src.buffer = this.noise;
