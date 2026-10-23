@@ -299,9 +299,9 @@ const CRASH_GORE_KMH = 250;   // acima disso o piloto se espatifa de primeira
 const GEARS = [0, .1, .22, .37, .55, .76, 1.01];
 const gearOf = (pct) => { let g = 1; while (g < 6 && pct > GEARS[g]) g++; return g; };
 const BIKES = [
-  { id: "cg", name: "Ronda Fun 160", note: "A de sempre. Equilibrada em tudo.", top: 200, accel: .55, handling: .7, tough: .6, paint: 0xc4232b, jacket: 0x2f4058, helmet: 0xeeeeec, stripe: 0xc4232b, model: "cg", engine: "piston" },
-  { id: "bros", name: "Ronda Broz 160", note: "Alta e parruda. Aguenta pancada.", top: 200, accel: .6, handling: .55, tough: .9, paint: 0xe8e8e6, jacket: 0x4a4f36, helmet: 0x24282f, stripe: 0xf2c230, model: "bros", engine: "piston" },
-  { id: "mottu", name: "MóhTú Elétrica", note: "Arranque forte, pouco fôlego.", top: 200, accel: .92, handling: .9, tough: .35, paint: 0x1d1e22, jacket: 0x5a2f3a, helmet: 0xc9ccd2, stripe: 0x4fd1c5, model: "mottu", engine: "electric" },
+  { id: "cg", name: "Ronda Fun 160", note: "A de sempre. Equilibrada em tudo.", top: 200, accel: .55, handling: .7, tough: .6, paint: 0xc4232b, jacket: 0x1f56c4, helmet: 0xeeeeec, stripe: 0xc4232b, model: "cg", engine: "piston" },
+  { id: "bros", name: "Ronda Broz 160", note: "Alta e parruda. Aguenta pancada.", top: 200, accel: .6, handling: .55, tough: .9, paint: 0xe8e8e6, jacket: 0x1f56c4, helmet: 0x24282f, stripe: 0xf2c230, model: "bros", engine: "piston" },
+  { id: "mottu", name: "MóhTú Elétrica", note: "Arranque forte, pouco fôlego.", top: 200, accel: .92, handling: .9, tough: .35, paint: 0x1d1e22, jacket: 0x1f56c4, helmet: 0xc9ccd2, stripe: 0x4fd1c5, model: "mottu", engine: "electric" },
 ];
 
 let seed = 20241022;
@@ -414,8 +414,8 @@ function canvasTex(w, h, draw, repeat = true) {
 function noise(g, w, h, n, a, colors) { for (let i = 0; i < n; i++) { g.fillStyle = colors[i % colors.length]; g.globalAlpha = a * Math.random(); g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2); } g.globalAlpha = 1; }
 // Asfalto de 3 faixas: 12 m de comprimento por repetição, tracejado de 3 m.
 const asphaltTex = canvasTex(256, 512, (g, w, h) => {
-  g.fillStyle = "#1c1d21"; g.fillRect(0, 0, w, h);
-  noise(g, w, h, 9000, .5, ["#111215", "#2b2c31", "#202125"]);
+  g.fillStyle = "#26272c"; g.fillRect(0, 0, w, h);
+  noise(g, w, h, 9000, .5, ["#1a1b1f", "#35363c", "#2a2b30"]);
   g.fillStyle = "rgba(8,8,10,.45)"; g.fillRect(w * .12, 0, w * .1, h); g.fillRect(w * .45, 0, w * .1, h); g.fillRect(w * .78, 0, w * .1, h);
   g.fillStyle = "#ece9df";
   for (const u of [1 / 3, 2 / 3]) g.fillRect(u * w - 2.5, 0, 5, h * .25);
@@ -806,7 +806,7 @@ function normalizeCar(scene0, length, maxW) {
 
 // ---------- Estado ----------
 const S = {
-  screen: "menu", bike: 0, s: 30, total: 30, atk: 0, atkTime: .34, atkSide: 1, atkDone: true, weapon: { kind: "murro", uses: Infinity }, hitStop: 0,
+  screen: "menu", bike: 0, s: 30, total: 30, atk: 0, atkTime: .34, atkSide: 1, atkDone: true, weapon: { kind: "murro", uses: Infinity }, hitStop: 0, alt: 0, vy: 0, airFrom: 0, allDeliveries: 0,
   deliveries: 0, totalDeliveries: 0, job: null, finale: null, hold: false, x: -1.8, vx: 0, v: 0, lean: 0, pitch: 0, boost: .5, boosting: false, money: 0, hits: 0, hitCool: 0, sinceHit: 0,
   invuln: 0, crash: null, shake: 0, time: 0, toast: null, limiter: false, overrun: 0, popT: 0, flame: 0, lastThrottle: false,
 };
@@ -844,6 +844,7 @@ function updateTraffic(dt) {
     c.laneWait -= dt;
     c.x = lerp(c.x, LANES[c.lane], Math.min(1, dt * 1.4));
     c.s = wrapS(c.s + c.v * dt);
+    if (ramp && ramp.active) { const dr = gap(ramp.s, c.s); if (dr > -c.size.z && dr < RAMP_L + 2) c.s = wrapS(ramp.s + RAMP_L + 2 + c.size.z); }
     placeOnTrack(c.obj, c.s, c.x, 0);
   }
 }
@@ -860,7 +861,7 @@ function updateCoins(prevS) {
   coinData.forEach((c, i) => {
     const d = gap(S.s, c.s);
     if (c.taken && Math.abs(d) > TRACK_LEN * .4) c.taken = false;
-    if (!c.taken && !S.crash && Math.abs(S.x - c.x) < .9 && gap(prevS, c.s) > -.5 && d <= .5) {
+    if (!c.taken && !S.crash && S.alt < 2 && Math.abs(S.x - c.x) < .9 && gap(prevS, c.s) > -.5 && d <= .5) {
       c.taken = true; S.money += 1; S.boost = Math.min(1, S.boost + COIN_CHARGE); Sound.coin();
     }
     placeOnTrack(_o, c.s, c.x, .9 + Math.sin(S.time * 3 + i) * .08, true);
@@ -1154,7 +1155,7 @@ function updatePeds(dt) {
       p.limbs[0].rotation.x = sw; p.limbs[2].rotation.x = -sw; p.limbs[1].rotation.x = -sw * .8; p.limbs[3].rotation.x = sw * .8;
       placeOnTrack(p.g, p.s, p.x, WALK_H, true);
       if (p.dir < 0) p.g.rotateY(Math.PI);
-      if (S.screen === "ride" && !S.crash && Math.abs(gap(S.s, p.s)) < BIKE_HALF_L && Math.abs(S.x - p.x) < BIKE_HALF_W + .25) hitPed(p);
+      if (S.screen === "ride" && !S.crash && S.alt < 1 && Math.abs(gap(S.s, p.s)) < BIKE_HALF_L && Math.abs(S.x - p.x) < BIKE_HALF_W + .25) hitPed(p);
       continue;
     }
     p.t += dt;
@@ -1219,11 +1220,12 @@ function update(dt) {
   // A moto deita antes de mudar de faixa, puxada pelo guidão.
   S.lean = lerp(S.lean, S.bar * Math.min(1, S.v / 12) * .95, Math.min(1, dt * 9));
   // No turbo: arranca forte até 300 km/h e depois segue ganhando velocidade sem teto.
-  if (S.boosting) S.v += (S.v * KMH < BOOST_FAST_KMH ? 24 : 4.5) * dt;
+  if (S.alt > 0) S.v -= .4 * dt;   // no ar só o arrasto
+  else if (S.boosting) S.v += (S.v * KMH < BOOST_FAST_KMH ? 24 : 4.5) * dt;
   else if (keys.accel) S.v += st.accel * dt * (1 - S.pitch * .3) * (S.v > st.top ? 0 : 1);
   else if (keys.brake) S.v -= 15 * dt;
   else S.v -= 2.2 * dt;
-  if (!S.boosting && S.v > st.top) S.v = lerp(S.v, st.top, Math.min(1, dt * 1.5));
+  if (!S.boosting && S.v > st.top && S.alt <= 0) S.v = lerp(S.v, st.top, Math.min(1, dt * 1.5));
   S.v = Math.max(0, S.v);   // sem turbo, a linha acima traz a moto de volta aos 200 km/h
   // Subir ou descer o meio-fio dá um tranco; a calçada é livre até a beira do gramado.
   const onWalk = Math.abs(S.x) > ROAD_HALF + CURB * .5;
@@ -1231,7 +1233,10 @@ function update(dt) {
   if (Math.abs(S.x) > RIDE_LIMIT) { S.x = Math.sign(S.x) * RIDE_LIMIT; S.vx = 0; S.v = Math.min(S.v, 12); S.shake = Math.max(S.shake, .6); }
   advance(S.v * dt);
   if (S.atk > 0) { S.atk -= dt; if (!S.atkDone && S.atk < S.atkTime * .45) resolveAttack(); }
-  if (S.invuln <= 0) collide(st);
+  S.landGrace = Math.max(0, (S.landGrace || 0) - dt);
+  if (S.invuln <= 0 && S.landGrace <= 0 && S.alt < 1.2 && rampHeightAt(S.s, S.x) === 0) collide(st);
+  updateRamp(dt, prevS);
+  updateAir(dt);
   S.shake = Math.max(0, S.shake - dt * 2.4);
   updatePops(dt, st);
   updateCoins(prevS);
@@ -1473,7 +1478,7 @@ function updateRivals(dt) {
     r.s = wrapS(r.s + r.v * dt);
     // Golpe do rival: avisa com "!" antes de bater; dá para escapar afastando ou freando.
     const dx = S.x - r.x;
-    if (riding && r.windup <= 0 && r.cool <= 0 && r.stun <= 0 && Math.abs(d) < 1.8 && Math.abs(dx) > .5 && Math.abs(dx) < WEAPONS[r.weapon].reach) {
+    if (riding && S.alt < 1 && r.windup <= 0 && r.cool <= 0 && r.stun <= 0 && Math.abs(d) < 1.8 && Math.abs(dx) > .5 && Math.abs(dx) < WEAPONS[r.weapon].reach) {
       r.windup = .5; r.atkSide = Math.sign(dx); r.warn.visible = true;
     }
     if (r.windup > 0) {
@@ -1526,7 +1531,7 @@ function updatePickups(prevS) {
     if (!it.g.visible) continue;
     placeOnTrack(it.g, it.s, it.x, 1.1 + Math.sin(S.time * 3 + it.s) * .1, true);
     it.g.rotateY(S.time * 2.5);
-    if (S.screen === "ride" && !S.crash && Math.abs(S.x - it.x) < 1 && gap(prevS, it.s) > -.5 && d <= .5) {
+    if (S.screen === "ride" && !S.crash && S.alt < 2 && Math.abs(S.x - it.x) < 1 && gap(prevS, it.s) > -.5 && d <= .5) {
       it.taken = true; equip(it.kind);
       showToast(`${WEAPONS[it.kind].name} na mão!`, "warn"); Sound.chime(true);
     }
@@ -1584,7 +1589,7 @@ function checkJob(prevS) {
   if (S.job.phase === "pickup") { showToast("Pedido na bag!", "warn"); Sound.chime(true); nextDelivery(); return; }
   if (S.deliveries === 5) { startFinale(S.job.s, S.job.side); return; }
   const secs = S.time - S.job.start, pay = 8 + Math.max(0, 14 - Math.floor(secs / 3));
-  S.money += pay; S.deliveries++; S.boost = 1;
+  S.money += pay; S.deliveries++; S.boost = 1; countDelivery();
   showToast(`Entregue! +R$ ${pay} · turbo cheio`, "good"); Sound.chime(false);
   nextPickup();
 }
@@ -1834,7 +1839,7 @@ function finaleNext() {
   for (const d of debris) scene.remove(d.m); debris = [];
   player.rider.visible = true;
   for (const r of rivals) spawnRival(r, S.s - 60 - rnd() * 200);
-  S.totalDeliveries += 6; S.deliveries = 0; S.boost = 1;
+  S.totalDeliveries += 6; S.deliveries = 0; S.boost = 1; countDelivery();
   S.finale = null; S.screen = "ride"; S.v = 0; S.invuln = 2;
   $("finale").hidden = true; hud.hidden = false; $("job").hidden = false; $("controls").hidden = false; hudCache = {};
   nextPickup();
@@ -1853,6 +1858,72 @@ function finaleCamera() {
   sky.position.copy(camera.position);
 }
 
+
+// ---------- Rampa a cada 4 entregas ----------
+// Atravessa a avenida inteira. Ao sair dela a moto ganha velocidade e voa alto; no ar passa por cima do trânsito.
+const RAMP_L = 14, RAMP_H = 3.2, RAMP_W = ROAD_HALF * 2, RAMP_VY = 24, AIR_G = 8.5, RAMP_KMH = 300;
+let ramp = null;
+const rampTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = "#ffcc1a"; g.fillRect(0, 0, w, h);
+  g.fillStyle = "#14151a";
+  for (let i = -2; i < 6; i++) { g.beginPath(); g.moveTo(i * 64, h); g.lineTo(i * 64 + 32, h); g.lineTo(i * 64 + 96, 0); g.lineTo(i * 64 + 64, 0); g.closePath(); g.fill(); }
+});
+rampTex.repeat.set(6, 2);
+function makeRamp() {
+  const g = new THREE.Group(), len = Math.hypot(RAMP_L, RAMP_H), tilt = Math.atan2(RAMP_H, RAMP_L);
+  const top = mesh(new THREE.BoxGeometry(RAMP_W, .25, len), new THREE.MeshStandardMaterial({ map: rampTex, roughness: .6 }), 0, RAMP_H / 2, RAMP_L / 2, g);
+  top.rotation.x = -tilt; top.receiveShadow = true;
+  // Laterais em triângulo e pilares de sustentação.
+  const shape = new THREE.Shape(); shape.moveTo(0, 0); shape.lineTo(RAMP_L, 0); shape.lineTo(RAMP_L, RAMP_H); shape.closePath();
+  for (const sd of [-1, 1]) { const side = mesh(new THREE.ShapeGeometry(shape), std(0x2a2c31, .7, .3, { side: THREE.DoubleSide }), sd * RAMP_W / 2, 0, 0, g); side.rotation.y = -Math.PI / 2; }
+  for (const x of [-RAMP_W / 2 + .3, 0, RAMP_W / 2 - .3]) mesh(new THREE.BoxGeometry(.3, RAMP_H, .3), std(0x3a3d44, .5, .6), x, RAMP_H / 2, RAMP_L - .2, g);
+  // Placa "RAMPA" sobre a avenida para ver de longe.
+  const signTex = canvasTex(512, 128, (c, w, h) => { c.fillStyle = "#e5322d"; c.fillRect(0, 0, w, h); c.fillStyle = "#fff"; c.font = "900 84px 'Bungee', sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("RAMPA ▲", w / 2, h / 2 + 4); }, false);
+  for (const sd of [-1, 1]) mesh(new THREE.CylinderGeometry(.12, .12, 8, 8), std(0x3a3d44, .5, .6), sd * (ROAD_HALF + .6), 4, -18, g);
+  const sign = mesh(new THREE.PlaneGeometry(6, 1.5), new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide }), 0, 7.4, -18, g);
+  sign.rotation.y = Math.PI;
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  scene.add(g);
+  return g;
+}
+function spawnRamp() {
+  if (!ramp) ramp = { g: makeRamp(), s: 0 };
+  ramp.s = wrapS(S.s + 260); ramp.g.visible = true; ramp.active = true;
+  showToast("Rampa à frente!", "boost");
+}
+// Altura do asfalto sob a moto quando ela está na rampa (0 fora dela).
+function rampHeightAt(s, x) {
+  if (!ramp || !ramp.active || Math.abs(x) > RAMP_W / 2) return 0;
+  const d = gap(ramp.s, s);
+  return d >= 0 && d <= RAMP_L ? RAMP_H * d / RAMP_L : 0;
+}
+function updateRamp(dt, prevS) {
+  if (!ramp || !ramp.active) return;
+  placeOnTrack(ramp.g, ramp.s, 0, 0, true);
+  const d = gap(ramp.s, S.s);
+  // Saiu pelo topo: decola.
+  if (S.alt <= 0 && !S.crash && gap(ramp.s, prevS) <= RAMP_L && d > RAMP_L && Math.abs(S.x) < RAMP_W / 2) {
+    S.alt = RAMP_H; S.vy = RAMP_VY; S.v = Math.max(S.v, RAMP_KMH / KMH); S.airFrom = S.total; S.pitch = 0;
+    showToast("VOOU!", "boost"); Sound.pop(true); Sound.whistle();
+  }
+  if (d > 120 || d < -400) { ramp.active = false; ramp.g.visible = false; }
+}
+function updateAir(dt) {
+  if (S.alt <= 0) return;
+  S.vy -= AIR_G * dt; S.alt += S.vy * dt;
+  if (S.alt <= 0) {
+    S.alt = 0; S.vy = 0; S.shake = Math.max(S.shake, 1.2);
+    S.landGrace = 1.2;   // logo após aterrissar, um instante para desviar do trânsito
+    emitSparks(player.root.position.clone(), 26, 5); Sound.crash(false);
+    showToast(`Saltou ${Math.round(S.total - S.airFrom)} m!`, "boost");
+  }
+}
+// Conta toda entrega (inclusive a 6ª do quebra-quebra) e solta a rampa a cada 4.
+function countDelivery() {
+  S.allDeliveries = (S.allDeliveries || 0) + 1;
+  if (S.allDeliveries % 4 === 0) spawnRamp();
+}
+
 // ---------- Moto do jogador na cena e câmera ----------
 const flame = new THREE.Mesh(new THREE.ConeGeometry(.07, .4, 10), new THREE.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: .9, blending: THREE.AdditiveBlending, depthWrite: false }));
 flame.rotation.x = -Math.PI / 2;
@@ -1869,7 +1940,8 @@ function placePlayer(dt) {
   placeWorld();
   if (!player) return;
   const c = S.crash;
-  placeOnTrack(player.root, S.s, S.x, Math.abs(S.x) > ROAD_HALF + CURB * .5 ? WALK_H : 0);
+  const ground = Math.abs(S.x) > ROAD_HALF + CURB * .5 ? WALK_H : 0, onRamp = rampHeightAt(S.s, S.x);
+  placeOnTrack(player.root, S.s, S.x, Math.max(ground, onRamp, S.alt));
   // A moto aponta para onde está indo: gira (yaw) conforme a velocidade lateral.
   // Giro positivo em torno de +Y leva a frente para a esquerda (+X local), por isso o sinal negativo.
   const bike = player.root;
@@ -1878,7 +1950,8 @@ function placePlayer(dt) {
   const roll = c ? c.dir * Math.min(1, c.t / .35) * 1.45 : S.lean * .6;
   bike.rotateZ(roll);
   if (c) bike.translateX(-c.dir * Math.min(c.t, 1) * .3);
-  player.pivot.rotation.x = -S.pitch * .5;
+  const airPitch = S.alt > 0 ? -Math.atan2(S.vy, Math.max(S.v, 10)) * .8 : onRamp > 0 ? -Math.atan2(RAMP_H, RAMP_L) : 0;
+  player.pivot.rotation.x = -S.pitch * .5 + airPitch;
   player.front.rotation.x = 0;
   const spin = S.v * dt / .31; player.rear.rotation.x += spin; player.fw.rotation.x += spin;
   // Agacha em alta velocidade e no boost.
@@ -1899,12 +1972,14 @@ function placePlayer(dt) {
   const back = 6.4 + boostK * 1.4 + S.v * .01 + gk * 3, height = 2.7 + S.v * .003 + gk * 1.8;
   // Centralizada na moto, com um atraso lateral pequeno para as trocas de faixa ficarem suaves.
   S.camX = lerp(S.camX ?? S.x, S.x, Math.min(1, dt * 6));
-  camPos.copy(fr.pos).addScaledVector(fr.right, S.camX).addScaledVector(fr.fwd, -back).addScaledVector(UP, height);
+  const lift = Math.max(S.alt, rampHeightAt(S.s, S.x)), airBack = S.alt > 0 ? 3 : 0;
+  // A câmera sobe com a moto inteira, mantendo o enquadramento de chão (um pouco mais afastada no voo).
+  camPos.copy(fr.pos).addScaledVector(fr.right, S.camX).addScaledVector(fr.fwd, -back - airBack).addScaledVector(UP, height + lift + airBack * .3);
   if (S.shake > 0) camPos.add(new THREE.Vector3((Math.random() - .5) * S.shake * .25, (Math.random() - .5) * S.shake * .2, 0));
   // Presa à moto: suavizar a posição a 180 km/h deixaria a câmera metros para trás.
   camera.position.copy(camPos);
   const ahead = frameAt(S.total + 10);
-  camLook.copy(ahead.pos).addScaledVector(ahead.right, S.camX).addScaledVector(UP, .9);
+  camLook.copy(ahead.pos).addScaledVector(ahead.right, S.camX).addScaledVector(UP, .9 + lift);
   camera.up.copy(UP);
   camera.lookAt(camLook);
   const targetFov = 58 + boostK * 10 + S.v * .04;
@@ -2064,7 +2139,8 @@ function setPlayer() {
 }
 function startRide() {
   if (S.finale) finaleNext();
-  Object.assign(S, { deliveries: 0, totalDeliveries: 0, atk: 0, hitStop: 0 });
+  Object.assign(S, { deliveries: 0, totalDeliveries: 0, allDeliveries: 0, atk: 0, hitStop: 0, alt: 0, vy: 0 });
+  if (ramp) { ramp.active = false; ramp.g.visible = false; }
   equip("murro"); nextPickup();
   for (const r of rivals) spawnRival(r, S.s + 120 + rnd() * 900);
   Object.assign(S, { screen: "ride", v: 0, x: -1.8, vx: 0, bar: 0, camX: -1.8, onWalk: false, lean: 0, pitch: 0, boost: .5, money: 0, hits: 0, hitCool: 0, invuln: 0, crash: null });
